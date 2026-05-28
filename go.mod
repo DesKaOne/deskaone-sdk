@@ -1,4 +1,4 @@
-module github.com/deskaone/deskaone-sdk
+module github.com/DesKaOne/deskaone-sdk
 
 go 1.25.0
 
