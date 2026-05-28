@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/url"
@@ -69,4 +71,19 @@ func parseProxyString(proxyStr string) (ProxyType, string, int, *string, *string
 	}
 
 	return proxyType, host, port, username, password, nil
+}
+
+func (p ProxyConfig) UUID() string {
+	user := ""
+	pass := ""
+	if p.Username != nil {
+		user = *p.Username
+	}
+	if p.Password != nil {
+		pass = *p.Password
+	}
+	raw := fmt.Sprintf("%s|%d|%s|%s|%s",
+		p.Host, p.Port, fmt.Sprint(p.Type), user, pass)
+	h := md5.Sum([]byte(raw))
+	return hex.EncodeToString(h[:])
 }
