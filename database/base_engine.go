@@ -59,30 +59,35 @@ func NewBaseEngine[E any, K any](
 /*
 ⚠️ DI-OVERRIDE OLEH ENGINE SPESIFIK
 */
-func (b *BaseEngine[E, K]) Table() string                { panic("Table()") }
-func (b *BaseEngine[E, K]) KeyColumns() []string         { panic("KeyColumns()") }
-func (b *BaseEngine[E, K]) IntPrimaryKey() *string       { return nil }
-func (b *BaseEngine[E, K]) ConflictColumns() []string    { return nil }
-func (b *BaseEngine[E, K]) FromRow(*sql.Rows) (E, error) { panic("FromRow") }
-func (b *BaseEngine[E, K]) KeyArgs(K) []any              { panic("KeyArgs") }
+func (b *BaseEngine[E, K]) Table() string             { return "" }
+func (b *BaseEngine[E, K]) KeyColumns() []string      { return nil }
+func (b *BaseEngine[E, K]) IntPrimaryKey() *string    { return nil }
+func (b *BaseEngine[E, K]) ConflictColumns() []string { return nil }
+func (b *BaseEngine[E, K]) FromRow(*sql.Rows) (E, error) {
+	var zero E
+	return zero, errors.New("FromRow not implemented")
+}
+func (b *BaseEngine[E, K]) KeyArgs(K) []any { return nil }
 
 // ================= WRITE =================
 
 func (b *BaseEngine[E, K]) Save(entity E, mode InserType) error {
+	if err := b.validateTableAndColumns(); err != nil {
+		return err
+	}
 	b.engine.notifyWrite()
 
-	cols := strings.Join(b.spec.Columns(), ", ")
 	vals := b.spec.Values(entity)
+	if len(vals) != len(b.spec.Columns()) {
+		return fmt.Errorf("values count %d does not match columns count %d", len(vals), len(b.spec.Columns()))
+	}
 
-	q := fmt.Sprintf(
-		"INSERT OR %s INTO %s (%s) VALUES (%s)",
-		mode,
-		b.spec.Table(),
-		cols,
-		placeholders(len(vals)),
-	)
+	q, err := b.insertQuery(mode, nil)
+	if err != nil {
+		return err
+	}
 
-	_, err := b.db.Exec(q, vals...)
+	_, err = b.db.Exec(q, vals...)
 	return err
 }
 
@@ -93,17 +98,16 @@ func (b *BaseEngine[E, K]) SaveBatch(
 	if len(entities) == 0 {
 		return nil
 	}
+	if err := b.validateTableAndColumns(); err != nil {
+		return err
+	}
 
 	b.engine.notifyWrite()
 
-	cols := strings.Join(b.spec.Columns(), ", ")
-	q := fmt.Sprintf(
-		"INSERT OR %s INTO %s (%s) VALUES (%s)",
-		mode,
-		b.spec.Table(),
-		cols,
-		placeholders(len(b.spec.Columns())),
-	)
+	q, err := b.insertQuery(mode, nil)
+	if err != nil {
+		return err
+	}
 
 	tx, err := b.db.Begin()
 	if err != nil {
@@ -112,14 +116,19 @@ func (b *BaseEngine[E, K]) SaveBatch(
 
 	stmt, err := tx.Prepare(q)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 
 	for _, e := range entities {
-		if _, err := stmt.Exec(b.spec.Values(e)...); err != nil {
-			tx.Rollback()
+		vals := b.spec.Values(e)
+		if len(vals) != len(b.spec.Columns()) {
+			_ = tx.Rollback()
+			return fmt.Errorf("values count %d does not match columns count %d", len(vals), len(b.spec.Columns()))
+		}
+		if _, err := stmt.Exec(vals...); err != nil {
+			_ = tx.Rollback()
 			return err
 		}
 	}
@@ -131,35 +140,29 @@ func (b *BaseEngine[E, K]) Upsert(
 	entity E,
 	updateColumns []string,
 ) error {
+	if err := b.validateTableAndColumns(updateColumns...); err != nil {
+		return err
+	}
 
 	conflicts := b.spec.ConflictColumns()
 	if len(conflicts) == 0 {
 		return errors.New("conflictColumns not defined")
 	}
+	if len(updateColumns) == 0 {
+		return errors.New("updateColumns not defined")
+	}
+	if err := validateIdentifiers(conflicts...); err != nil {
+		return err
+	}
 
 	b.engine.notifyWrite()
 
-	cols := strings.Join(b.spec.Columns(), ", ")
 	vals := b.spec.Values(entity)
-
-	updates := make([]string, len(updateColumns))
-	for i, c := range updateColumns {
-		updates[i] = fmt.Sprintf("%s = excluded.%s", c, c)
+	if len(vals) != len(b.spec.Columns()) {
+		return fmt.Errorf("values count %d does not match columns count %d", len(vals), len(b.spec.Columns()))
 	}
 
-	q := fmt.Sprintf(`
-INSERT INTO %s (%s)
-VALUES (%s)
-ON CONFLICT(%s)
-DO UPDATE SET %s
-`,
-		b.spec.Table(),
-		cols,
-		placeholders(len(vals)),
-		strings.Join(conflicts, ", "),
-		strings.Join(updates, ", "),
-	)
-
+	q := b.engine.dialect.Upsert(b.spec.Table(), b.spec.Columns(), conflicts, updateColumns)
 	_, err := b.db.Exec(q, vals...)
 	return err
 }
@@ -171,33 +174,24 @@ func (b *BaseEngine[E, K]) UpsertBatch(
 	if len(entities) == 0 {
 		return nil
 	}
+	if err := b.validateTableAndColumns(updateColumns...); err != nil {
+		return err
+	}
 
 	conflicts := b.spec.ConflictColumns()
 	if len(conflicts) == 0 {
 		return errors.New("conflictColumns not defined")
 	}
+	if len(updateColumns) == 0 {
+		return errors.New("updateColumns not defined")
+	}
+	if err := validateIdentifiers(conflicts...); err != nil {
+		return err
+	}
 
 	b.engine.notifyWrite()
 
-	cols := strings.Join(b.spec.Columns(), ", ")
-
-	updates := make([]string, len(updateColumns))
-	for i, c := range updateColumns {
-		updates[i] = fmt.Sprintf("%s = excluded.%s", c, c)
-	}
-
-	q := fmt.Sprintf(`
-INSERT INTO %s (%s)
-VALUES (%s)
-ON CONFLICT(%s)
-DO UPDATE SET %s
-`,
-		b.spec.Table(),
-		cols,
-		placeholders(len(b.spec.Columns())),
-		strings.Join(conflicts, ", "),
-		strings.Join(updates, ", "),
-	)
+	q := b.engine.dialect.Upsert(b.spec.Table(), b.spec.Columns(), conflicts, updateColumns)
 
 	tx, err := b.db.Begin()
 	if err != nil {
@@ -206,14 +200,19 @@ DO UPDATE SET %s
 
 	stmt, err := tx.Prepare(q)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 
 	for _, e := range entities {
-		if _, err := stmt.Exec(b.spec.Values(e)...); err != nil {
-			tx.Rollback()
+		vals := b.spec.Values(e)
+		if len(vals) != len(b.spec.Columns()) {
+			_ = tx.Rollback()
+			return fmt.Errorf("values count %d does not match columns count %d", len(vals), len(b.spec.Columns()))
+		}
+		if _, err := stmt.Exec(vals...); err != nil {
+			_ = tx.Rollback()
 			return err
 		}
 	}
@@ -221,13 +220,40 @@ DO UPDATE SET %s
 	return tx.Commit()
 }
 
+func (b *BaseEngine[E, K]) insertQuery(mode InserType, updateColumns []string) (string, error) {
+	d := b.engine.dialect
+	switch mode {
+	case InsertIgnore:
+		return d.InsertIgnore(b.spec.Table(), b.spec.Columns(), b.spec.ConflictColumns()), nil
+	case InsertReplace:
+		if b.engine.driver == DriverPostgres && len(b.spec.ConflictColumns()) == 0 {
+			return "", errors.New("postgres replace requires conflictColumns")
+		}
+		return d.InsertReplace(b.spec.Table(), b.spec.Columns(), b.spec.ConflictColumns()), nil
+	case ModeUpsert:
+		if len(b.spec.ConflictColumns()) == 0 {
+			return "", errors.New("conflictColumns not defined")
+		}
+		if len(updateColumns) == 0 {
+			updateColumns = b.spec.Columns()
+		}
+		return d.Upsert(b.spec.Table(), b.spec.Columns(), b.spec.ConflictColumns(), updateColumns), nil
+	default:
+		return d.Insert(b.spec.Table(), b.spec.Columns()), nil
+	}
+}
+
 // ================= READ =================
 
 func (b *BaseEngine[E, K]) Find(key K) (*E, error) {
-	where := whereKey(b.spec.KeyColumns())
+	if err := b.validateTableAndColumns(b.spec.KeyColumns()...); err != nil {
+		return nil, err
+	}
+	where := whereKeyFor(b.engine.dialect, b.spec.KeyColumns(), 1)
 	q := fmt.Sprintf(
-		"SELECT * FROM %s WHERE %s LIMIT 1",
-		b.spec.Table(),
+		"SELECT %s FROM %s WHERE %s LIMIT 1",
+		b.selectColumns(),
+		b.engine.dialect.QuoteIdent(b.spec.Table()),
 		where,
 	)
 
@@ -241,6 +267,9 @@ func (b *BaseEngine[E, K]) Find(key K) (*E, error) {
 		e, err := b.spec.FromRow(rows)
 		return &e, err
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return nil, nil
 }
 
@@ -250,12 +279,21 @@ func (b *BaseEngine[E, K]) Load(
 	offset int,
 	lastID *int,
 ) ([]E, error) {
+	if err := b.validateTableAndColumns(); err != nil {
+		return nil, err
+	}
 
 	switch mode {
 
 	case PaginationOffset:
 		rows, err := b.db.Query(
-			fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", b.spec.Table()),
+			fmt.Sprintf(
+				"SELECT %s FROM %s LIMIT %s OFFSET %s",
+				b.selectColumns(),
+				b.engine.dialect.QuoteIdent(b.spec.Table()),
+				b.engine.dialect.Placeholder(1),
+				b.engine.dialect.Placeholder(2),
+			),
 			limit, offset,
 		)
 		if err != nil {
@@ -271,23 +309,29 @@ func (b *BaseEngine[E, K]) Load(
 			}
 			out = append(out, e)
 		}
-		return out, nil
+		return out, rows.Err()
 
 	case PaginationKeyset:
 		pk := b.spec.IntPrimaryKey()
 		if pk == nil || lastID == nil {
 			return nil, errors.New("keyset pagination not supported")
 		}
+		if err := validateIdentifier(*pk); err != nil {
+			return nil, err
+		}
 
 		q := fmt.Sprintf(`
-SELECT * FROM %s
-WHERE %s > ?
+SELECT %s FROM %s
+WHERE %s > %s
 ORDER BY %s
-LIMIT ?
+LIMIT %s
 `,
-			b.spec.Table(),
-			*pk,
-			*pk,
+			b.selectColumns(),
+			b.engine.dialect.QuoteIdent(b.spec.Table()),
+			b.engine.dialect.QuoteIdent(*pk),
+			b.engine.dialect.Placeholder(1),
+			b.engine.dialect.QuoteIdent(*pk),
+			b.engine.dialect.Placeholder(2),
 		)
 
 		rows, err := b.db.Query(q, *lastID, limit)
@@ -304,7 +348,7 @@ LIMIT ?
 			}
 			out = append(out, e)
 		}
-		return out, nil
+		return out, rows.Err()
 	}
 
 	return nil, errors.New("invalid pagination mode")
@@ -313,30 +357,42 @@ LIMIT ?
 // ================= DELETE =================
 
 func (b *BaseEngine[E, K]) Delete(key K) error {
+	if err := b.validateTableAndColumns(b.spec.KeyColumns()...); err != nil {
+		return err
+	}
 	b.engine.notifyWrite()
 
-	where := whereKey(b.spec.KeyColumns())
-	q := fmt.Sprintf("DELETE FROM %s WHERE %s", b.spec.Table(), where)
+	where := whereKeyFor(b.engine.dialect, b.spec.KeyColumns(), 1)
+	q := fmt.Sprintf("DELETE FROM %s WHERE %s", b.engine.dialect.QuoteIdent(b.spec.Table()), where)
 
 	_, err := b.db.Exec(q, b.spec.KeyArgs(key)...)
 	return err
 }
 
 func (b *BaseEngine[E, K]) DeleteAll() error {
+	if err := b.validateTableAndColumns(); err != nil {
+		return err
+	}
 	b.engine.notifyWrite()
-	_, err := b.db.Exec("DELETE FROM " + b.spec.Table())
+	_, err := b.db.Exec("DELETE FROM " + b.engine.dialect.QuoteIdent(b.spec.Table()))
 	return err
 }
 
 func (b *BaseEngine[E, K]) Count() (int, error) {
+	if err := b.validateTableAndColumns(); err != nil {
+		return 0, err
+	}
 	var c int
-	err := b.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", b.spec.Table())).Scan(&c)
+	err := b.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", b.engine.dialect.QuoteIdent(b.spec.Table()))).Scan(&c)
 	return c, err
 }
 
 func (b *BaseEngine[E, K]) IsEmptyFast() (bool, error) {
+	if err := b.validateTableAndColumns(); err != nil {
+		return false, err
+	}
 	row := b.db.QueryRow(
-		fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", b.spec.Table()),
+		fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", b.engine.dialect.QuoteIdent(b.spec.Table())),
 	)
 	var x int
 	err := row.Scan(&x)
@@ -346,20 +402,52 @@ func (b *BaseEngine[E, K]) IsEmptyFast() (bool, error) {
 	return false, err
 }
 
+func (b *BaseEngine[E, K]) selectColumns() string {
+	cols := b.spec.Columns()
+	if len(cols) == 0 {
+		return "*"
+	}
+	return joinedQuotedIdents(b.engine.dialect, cols)
+}
+
+func (b *BaseEngine[E, K]) validateTableAndColumns(extraColumns ...string) error {
+	if err := validateIdentifier(b.spec.Table()); err != nil {
+		return err
+	}
+	return validateIdentifiers(append(append([]string{}, b.spec.Columns()...), extraColumns...)...)
+}
+
+func validateIdentifiers(names ...string) error {
+	for _, name := range names {
+		if err := validateIdentifier(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 /* ================= helpers ================= */
 
 func whereKey(cols []string) string {
+	return whereKeyFor(SQLiteDialect{}, cols, 1)
+}
+
+func whereKeyFor(d Dialect, cols []string, startIndex int) string {
 	out := make([]string, len(cols))
 	for i, c := range cols {
-		out[i] = c + " = ?"
+		out[i] = fmt.Sprintf("%s = %s", d.QuoteIdent(c), d.Placeholder(startIndex+i))
 	}
 	return strings.Join(out, " AND ")
 }
 
 func placeholders(n int) string {
+	return placeholdersFor(SQLiteDialect{}, n, 1)
+}
+
+func placeholdersFor(d Dialect, n int, startIndex int) string {
 	out := make([]string, n)
 	for i := range out {
-		out[i] = "?"
+		out[i] = d.Placeholder(startIndex + i)
 	}
 	return strings.Join(out, ", ")
 }
