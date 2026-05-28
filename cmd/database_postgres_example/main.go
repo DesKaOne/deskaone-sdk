@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/deskaone/deskaone-sdk/database"
+	"github.com/DesKaOne/deskaone-sdk/database"
 )
 
 func main() {
