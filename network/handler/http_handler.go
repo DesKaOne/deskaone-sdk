@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 const (

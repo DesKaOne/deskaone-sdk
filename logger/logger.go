@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/termcolor"
+	"github.com/DesKaOne/deskaone-sdk/termcolor"
 	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
 )

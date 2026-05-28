@@ -7,7 +7,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 func Socks5HandlerConn(

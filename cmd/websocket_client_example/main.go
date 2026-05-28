@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/network"
+	"github.com/DesKaOne/deskaone-sdk/network"
 )
 
 func autoPing() {

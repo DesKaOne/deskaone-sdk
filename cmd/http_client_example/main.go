@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/network"
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/network"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 func withProxy() {

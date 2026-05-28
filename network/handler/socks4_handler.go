@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 func Socks4HandlerConn(

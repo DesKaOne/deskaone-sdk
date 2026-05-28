@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 var ErrTCPClientClosed = errors.New("tcp client closed")

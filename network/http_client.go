@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 const defaultHTTPUserAgent = "DesKaOne/0.0.1"

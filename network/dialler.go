@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deskaone/deskaone-sdk/network/handler"
-	p "github.com/deskaone/deskaone-sdk/proxy"
+	"github.com/DesKaOne/deskaone-sdk/network/handler"
+	p "github.com/DesKaOne/deskaone-sdk/proxy"
 )
 
 func dialDirect(
