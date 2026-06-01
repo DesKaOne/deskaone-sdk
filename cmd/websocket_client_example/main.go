@@ -94,9 +94,50 @@ func autoReconnect() {
 	rws.Run(ctx)
 }
 
+func brdtnet() {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ws, err := network.NewWebSocketClient(
+		ctx,
+		"wss://proxyjs.brdtnet.com",
+		&network.WebSocketConfig{
+			Timeout:        15 * time.Second,
+			ReadTimeout:    60 * time.Second,
+			MaxPayloadSize: 8 * 1024 * 1024,
+			Compress:       false,
+			UserAgent:      "Dalvik/2.1.0 (Linux; U; Android 8.1.0; Redmi 3X Build/OPM7.181205.001)",
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	ws.Listen(
+		ctx,
+		func(wsm network.WebSocketMessage) {
+			// Contoh Response awal setelah terhubung ke Brdtnet Proxy
+			// {"type":"ipc_call","cmd":"tunnel_init","cookie":142601400,"msg":{"ext_ip":"110.137.73.55"}}
+			fmt.Println("opcode:", wsm.Opcode)
+			fmt.Println("data:", string(wsm.Data))
+		},
+		func(err error) {
+			fmt.Println("error:", err)
+		},
+		func() {
+			fmt.Println("disconnected")
+		},
+	)
+
+	select {}
+}
+
 func main() {
-	fmt.Println("=== Auto Ping ===")
+	/*fmt.Println("=== Auto Ping ===")
 	autoPing()
 	fmt.Println("\n=== Auto Reconnect ===")
-	autoReconnect()
+	autoReconnect()*/
+	fmt.Println("\n=== Brdtnet Proxy ===")
+	brdtnet()
 }

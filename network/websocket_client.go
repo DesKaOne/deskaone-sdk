@@ -33,7 +33,9 @@ const (
 )
 
 type WebSocketClient struct {
-	tcp     *TCPClient
+	tcp    *TCPClient
+	reader *bufio.Reader
+
 	timeout time.Duration
 
 	readTimeout time.Duration
@@ -53,6 +55,8 @@ type WebSocketConfig struct {
 	Headers map[string]string
 
 	UserAgent string
+	Compress  bool
+	Protocols []string
 
 	PingInterval   time.Duration
 	PingPayload    []byte
@@ -212,6 +216,12 @@ func (c *WebSocketClient) handshake(u *url.URL, conf *WebSocketConfig) error {
 	writeWSHeaderIfMissing(&b, conf.Headers, "Sec-WebSocket-Key", key)
 	writeWSHeaderIfMissing(&b, conf.Headers, "Sec-WebSocket-Version", "13")
 	writeWSHeaderIfMissing(&b, conf.Headers, "User-Agent", userAgent)
+	if conf.Compress {
+		writeWSHeaderIfMissing(&b, conf.Headers, "Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits")
+	}
+	if len(conf.Protocols) > 0 {
+		writeWSHeaderIfMissing(&b, conf.Headers, "Sec-WebSocket-Protocol", strings.Join(conf.Protocols, ", "))
+	}
 
 	for k, v := range conf.Headers {
 		keyName := strings.TrimSpace(k)
@@ -229,6 +239,8 @@ func (c *WebSocketClient) handshake(u *url.URL, conf *WebSocketConfig) error {
 
 	b.WriteString("\r\n")
 
+	fmt.Println(b.String())
+
 	if err := c.tcp.WriteFull(b.Bytes()); err != nil {
 		return err
 	}
@@ -239,6 +251,7 @@ func (c *WebSocketClient) handshake(u *url.URL, conf *WebSocketConfig) error {
 	}
 
 	reader := bufio.NewReader(c.tcp.conn)
+	c.reader = reader
 
 	statusLine, err := readHTTPLine(reader)
 	if err != nil {
@@ -359,7 +372,12 @@ func (c *WebSocketClient) ReadMessage() (*WebSocketMessage, error) {
 			_ = c.tcp.conn.SetReadDeadline(time.Now().Add(c.readTimeout))
 		}
 
-		frame, err := readWebSocketFrameWithLimit(c.tcp.conn, c.maxPayloadSize)
+		reader := io.Reader(c.tcp.conn)
+		if c.reader != nil {
+			reader = c.reader
+		}
+
+		frame, err := readWebSocketFrameWithLimit(reader, c.maxPayloadSize)
 
 		if c.readTimeout > 0 {
 			_ = c.tcp.conn.SetReadDeadline(time.Time{})
