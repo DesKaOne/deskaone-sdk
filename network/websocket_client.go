@@ -239,8 +239,6 @@ func (c *WebSocketClient) handshake(u *url.URL, conf *WebSocketConfig) error {
 
 	b.WriteString("\r\n")
 
-	fmt.Println(b.String())
-
 	if err := c.tcp.WriteFull(b.Bytes()); err != nil {
 		return err
 	}

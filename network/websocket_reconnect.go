@@ -112,6 +112,13 @@ func (r *ReconnectWebSocketClient) Run(ctx context.Context) {
 
 		done := make(chan error, 1)
 
+		var notifyOnce sync.Once
+		notifyDone := func(err error) {
+			notifyOnce.Do(func() {
+				done <- err
+			})
+		}
+
 		ws.Listen(
 			ctx,
 			func(msg WebSocketMessage) {
@@ -120,10 +127,10 @@ func (r *ReconnectWebSocketClient) Run(ctx context.Context) {
 				}
 			},
 			func(err error) {
-				done <- err
+				notifyDone(err)
 			},
 			func() {
-				done <- nil
+				notifyDone(nil)
 			},
 		)
 
