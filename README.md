@@ -2,6 +2,10 @@
 
 A small Go SDK with network/proxy/http/websocket helpers and a dialect-aware database package.
 
+## Specification
+
+Cross-language behavior is documented in [SDK_SPEC.md](SDK_SPEC.md).
+
 ## Database
 
 The `database` package supports SQLite and PostgreSQL through a shared `database.Open(database.Config{...})` API. The engine is instance-based, so one process can open multiple independent database connections.
