@@ -67,6 +67,52 @@ DESKAONE_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/deskaone?sslm
   go run ./cmd/database_postgres_example
 ```
 
+### PostgreSQL pgx auto-create and embedded migrations
+
+For reusable SDK-style applications, `database/postgres` opens a `pgxpool.Pool`, can create the target database, and applies SQL files embedded with `embed.FS`.
+
+```go
+package main
+
+import (
+    "context"
+    "embed"
+    "log"
+
+    dbpostgres "github.com/DesKaOne/deskaone-sdk/database/postgres"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+func main() {
+    pool, err := dbpostgres.Open(context.Background(), dbpostgres.Config{
+        Host: "192.168.1.5",
+        Port: 5432,
+        User: "deskaone",
+        Password: "change_me",
+        Database: "wolf",
+        SSLMode: "disable",
+        AutoCreateDatabase: true,
+        AutoMigrate: true,
+    }, migrations, "migrations")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer pool.Close()
+}
+```
+
+`AutoCreateDatabase=true` connects to `AdminDatabase` (default `postgres`) and requires a PostgreSQL role with `CREATEDB` permission. For production deployments, prefer `AutoCreateDatabase=false` with `AutoMigrate=true` after the database has been provisioned.
+
+Migration files should be named with ascending numeric prefixes, such as `001_init.sql` and `002_add_indexes.sql`. Applied migrations are stored in `schema_migrations` with checksums; a checksum mismatch returns an error instead of silently rerunning changed SQL.
+
+A runnable pgx example with embedded migrations is available at `examples/postgres_auto_migrate`:
+
+```bash
+go run ./examples/postgres_auto_migrate
+```
+
 ### Migration example
 
 Set `AutoMigrate` to `true` to run migrations during `Open`, or call `Migrate` later with an explicit context:
