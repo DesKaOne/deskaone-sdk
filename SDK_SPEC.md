@@ -29,6 +29,8 @@ Supported proxy URL formats:
 
 - `http://host:port`
 - `http://user:pass@host:port`
+- `https://host:port`
+- `https://user:pass@host:port`
 - `socks4://host:port`
 - `socks4://user@host:port`
 - `socks5://host:port`
@@ -39,7 +41,8 @@ Supported proxy URL formats:
 Default behavior:
 
 - Missing scheme may use a configurable default proxy type.
-- `http` and `https` schemes map to HTTP CONNECT proxy.
+- `http` uses an unencrypted TCP connection to the proxy, followed by HTTP CONNECT.
+- `https` uses a verified TLS connection to the proxy, followed by HTTP CONNECT.
 - `s4`, `sock4`, and `socks4` schemes map to SOCKS4.
 - `s5`, `sock5`, and `socks5` schemes map to SOCKS5.
 - Username and password values must be URL-decoded when parsed.
@@ -67,6 +70,8 @@ Connection matrix:
 | Direct TLS | Socket/connect target -> TLS upgrade -> `TcpConnection` |
 | Proxy plain TCP | Socket/connect proxy -> proxy handshake -> `TcpConnection` |
 | Proxy TLS | Socket/connect proxy -> proxy handshake -> TLS upgrade to target -> `TcpConnection` |
+| HTTPS proxy (plain target) | TCP to proxy -> TLS to proxy -> HTTP CONNECT -> `TcpConnection` |
+| HTTPS proxy (TLS target) | TCP to proxy -> TLS to proxy -> HTTP CONNECT -> TLS to target -> `TcpConnection` |
 
 Requirements:
 
