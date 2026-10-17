@@ -86,6 +86,26 @@ func dialViaProxy(
 			conn = wrappedConn
 		}
 
+	case p.ProxyTypeHTTPS:
+		var wrappedConn net.Conn
+
+		wrappedConn, handlerErr = handler.HttpsHandlerConn(
+			conn,
+			proxyConfig,
+			dstHost,
+			dstPort,
+			timeout,
+		)
+
+		if handlerErr == nil {
+			if wrappedConn == nil {
+				_ = conn.Close()
+				return nil, fmt.Errorf("https proxy handler returned nil connection")
+			}
+
+			conn = wrappedConn
+		}
+
 	case p.ProxyTypeSOCKS5:
 		handlerErr = handler.Socks5HandlerConn(
 			conn,
