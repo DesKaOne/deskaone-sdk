@@ -35,7 +35,9 @@ func ProxyTypeFromString(s string) (ProxyType, error) {
 		return ProxyTypeHTTPS, nil
 	case "s4", "sock4", "socks4":
 		return ProxyTypeSOCKS4, nil
-	case "s5", "sock5", "socks5":
+	case "s5", "sock5", "socks5", "socks5h":
+		// SOCKS5 always sends the destination hostname to the proxy using
+		// ATYP=DOMAINNAME in Socks5HandlerConn, so socks5h is an alias.
 		return ProxyTypeSOCKS5, nil
 	default:
 		return "", fmt.Errorf("invalid proxy type: %s", s)
