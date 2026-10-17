@@ -35,6 +35,8 @@ Supported proxy URL formats:
 - `socks4://user@host:port`
 - `socks5://host:port`
 - `socks5://user:pass@host:port`
+- `socks5h://host:port`
+- `socks5h://user:pass@host:port`
 - `host:port`
 - `user:pass@host:port`
 
@@ -44,7 +46,8 @@ Default behavior:
 - `http` uses an unencrypted TCP connection to the proxy, followed by HTTP CONNECT.
 - `https` uses a verified TLS connection to the proxy, followed by HTTP CONNECT.
 - `s4`, `sock4`, and `socks4` schemes map to SOCKS4.
-- `s5`, `sock5`, and `socks5` schemes map to SOCKS5.
+- `s5`, `sock5`, `socks5`, and `socks5h` schemes map to SOCKS5.
+- SOCKS5 CONNECT requests send destination hostnames using `ATYP=DOMAINNAME (0x03)` by default; this enables remote DNS resolution when the destination is supplied as a hostname.
 - Username and password values must be URL-decoded when parsed.
 - `toString` / `toUrl` output must URL-encode credentials.
 - Host must not be empty.
